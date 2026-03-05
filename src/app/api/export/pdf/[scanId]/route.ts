@@ -10,14 +10,15 @@ export async function GET(
   const db = createServerClient()
 
   // Load scan + company
-  const { data: scan } = await db
+  const { data: scan, error: scanError } = await db
     .from('scans')
     .select('*')
     .eq('id', scanId)
     .single()
 
   if (!scan) {
-    return NextResponse.json({ error: 'Scan not found' }, { status: 404 })
+    console.error('[PDF export] scan lookup failed', { scanId, scanError })
+    return NextResponse.json({ error: 'Scan not found', detail: scanError?.message ?? null }, { status: 404 })
   }
 
   const { data: company } = await db
