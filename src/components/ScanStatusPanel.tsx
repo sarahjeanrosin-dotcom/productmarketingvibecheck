@@ -80,7 +80,7 @@ export default function ScanStatusPanel({ scan }: Props) {
         </div>
       )}
 
-      {stats?.by_type && typeof stats.by_type === 'object' && (
+      {!!stats?.by_type && typeof stats.by_type === 'object' && (
         <div className="mt-4">
           <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">By content type</p>
           <div className="flex flex-wrap gap-2">
