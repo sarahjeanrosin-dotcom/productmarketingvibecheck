@@ -7,17 +7,28 @@ export async function GET(
   { params }: { params: Promise<{ scanId: string }> }
 ) {
   const { scanId } = await params
-  const db = createServerClient()
+  console.log('[PDF export] start, scanId:', scanId)
+
+  let db: ReturnType<typeof createServerClient>
+  try {
+    db = createServerClient()
+    console.log('[PDF export] supabase client created')
+  } catch (e) {
+    console.error('[PDF export] failed to create supabase client:', e)
+    return NextResponse.json({ error: 'DB init failed', detail: String(e) }, { status: 500 })
+  }
 
   // Load scan + company
+  console.log('[PDF export] querying scans table...')
   const { data: scan, error: scanError } = await db
     .from('scans')
     .select('*')
     .eq('id', scanId)
     .single()
 
+  console.log('[PDF export] scan result:', { scanId, found: !!scan, error: scanError })
+
   if (!scan) {
-    console.error('[PDF export] scan lookup failed', { scanId, scanError })
     return NextResponse.json({ error: 'Scan not found', detail: scanError?.message ?? null }, { status: 404 })
   }
 
