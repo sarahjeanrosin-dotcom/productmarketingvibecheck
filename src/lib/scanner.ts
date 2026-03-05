@@ -315,7 +315,7 @@ function addSerperResult(
     snippet: result.snippet ?? '',
     source,
     raw_result: result as unknown as Record<string, unknown>,
-    published_at: result.date ? new Date(result.date).toISOString() : null,
+    published_at: result.date ? (() => { try { const d = new Date(result.date!); return isNaN(d.getTime()) ? null : d.toISOString() } catch { return null } })() : null,
     metrics: null,
   })
 }
