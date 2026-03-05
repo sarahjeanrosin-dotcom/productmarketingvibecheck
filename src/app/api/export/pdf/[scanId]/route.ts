@@ -42,6 +42,7 @@ export async function GET(
   // Generate PDF
   const chunks: Buffer[] = []
 
+  try {
   await new Promise<void>((resolve, reject) => {
     const doc = new PDFDocument({ margin: 60, size: 'A4' })
 
@@ -185,12 +186,17 @@ export async function GET(
 
     doc.end()
   })
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error('[PDF export] generation error:', err)
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
 
   const pdf = Buffer.concat(chunks)
   const companyName = (company?.name ?? 'company').replace(/[^a-z0-9]/gi, '_').toLowerCase()
   const filename = `${companyName}_report_${new Date().toISOString().split('T')[0]}.pdf`
 
-  return new NextResponse(pdf, {
+  return new Response(new Uint8Array(pdf), {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="${filename}"`,
