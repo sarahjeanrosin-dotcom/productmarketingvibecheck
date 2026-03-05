@@ -86,7 +86,7 @@ export async function GET(
       lineHeight = size * 1.45,
     } = opts
 
-    const words = text.replace(/\r?\n/g, ' ').split(' ').filter(Boolean)
+    const words = text.replace(/[^\x00-\xFF]/g, '?').replace(/\r?\n/g, ' ').split(' ').filter(Boolean)
     const lines: string[] = []
     let current = ''
 
