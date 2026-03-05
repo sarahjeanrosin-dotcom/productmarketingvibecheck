@@ -82,10 +82,11 @@ export default function CompanyPage() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to start scan')
-      // Immediately set status to running for UI feedback
       setScan(data.scan)
       setItems([])
       setInsight(null)
+      // Scan runs synchronously — reload items and insight now that it's done
+      await loadData()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
