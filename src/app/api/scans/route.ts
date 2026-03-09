@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
 import { runScan, deleteCompanyData } from '@/lib/scanner'
 import type { Company } from '@/lib/types'
 
-// Allow up to 5 minutes for scan execution
+// Allow up to 5 minutes for background scan execution
 export const maxDuration = 300
 
 export async function GET(req: NextRequest) {
@@ -96,25 +96,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: scanError?.message ?? 'Failed to create scan' }, { status: 500 })
   }
 
-  // Run scan synchronously (function has maxDuration=300 for Netlify Pro)
-  // This keeps the architecture simple for V1
-  try {
-    await runScan(scan.id, company as Company)
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Scan failed'
-    await db
-      .from('scans')
-      .update({ status: 'failed', error: msg, completed_at: new Date().toISOString() })
-      .eq('id', scan.id)
-    return NextResponse.json({ error: msg }, { status: 500 })
-  }
+  // Run scan asynchronously after response is sent.
+  // This avoids serverless function timeout killing the scan mid-run.
+  after(async () => {
+    try {
+      await runScan(scan.id, company as Company)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Scan failed'
+      const bgDb = createServerClient()
+      await bgDb
+        .from('scans')
+        .update({ status: 'failed', error: msg, completed_at: new Date().toISOString() })
+        .eq('id', scan.id)
+    }
+  })
 
-  // Return completed scan
-  const { data: completedScan } = await db
-    .from('scans')
-    .select('*')
-    .eq('id', scan.id)
-    .single()
-
-  return NextResponse.json({ scan: completedScan }, { status: 201 })
+  // Return immediately — client polls GET /api/scans?company_id= for status
+  return NextResponse.json({ scan }, { status: 201 })
 }

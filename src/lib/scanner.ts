@@ -91,8 +91,8 @@ export async function runScan(scanId: string, company: Company): Promise<void> {
   const startTime = Date.now()
 
   const sourceConfig = company.source_config
-  const maxItems = sourceConfig.max_items ?? 200
-  const maxIterations = sourceConfig.max_iterations ?? 12
+  const maxItems = sourceConfig.max_items ?? 100
+  const maxIterations = sourceConfig.max_iterations ?? 4
   const N_CONSECUTIVE = 2
 
   const includeKeywords = company.include_keywords ?? []
