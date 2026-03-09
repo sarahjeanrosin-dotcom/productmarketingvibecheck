@@ -7,6 +7,7 @@ import type { Company, Scan, ContentItem, Insight } from '@/lib/types'
 import ScanStatusPanel from '@/components/ScanStatusPanel'
 import ResultsTable from '@/components/ResultsTable'
 import InsightsPanel from '@/components/InsightsPanel'
+import { authedFetch } from '@/lib/authed-fetch'
 
 export default function CompanyPage() {
   const params = useParams()
@@ -25,8 +26,8 @@ export default function CompanyPage() {
   const loadData = useCallback(async () => {
     try {
       const [companyRes, scanRes] = await Promise.all([
-        fetch(`/api/companies/${companyId}`),
-        fetch(`/api/scans?company_id=${companyId}`),
+        authedFetch(`/api/companies/${companyId}`),
+        authedFetch(`/api/scans?company_id=${companyId}`),
       ])
 
       const companyData = await companyRes.json()
@@ -54,8 +55,8 @@ export default function CompanyPage() {
   useEffect(() => {
     if (!scan || (scan.status !== 'running' && scan.status !== 'queued')) return
 
-    const interval = setInterval(async () => {
-      const res = await fetch(`/api/scans?company_id=${companyId}`)
+      const interval = setInterval(async () => {
+      const res = await authedFetch(`/api/scans?company_id=${companyId}`)
       if (!res.ok) return
       const data = await res.json()
       if (data.scan) {
@@ -75,7 +76,7 @@ export default function CompanyPage() {
     setScanning(true)
     setError(null)
     try {
-      const res = await fetch('/api/scans', {
+      const res = await authedFetch('/api/scans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ company_id: companyId }),
@@ -100,9 +101,9 @@ export default function CompanyPage() {
       return
     }
     try {
-      const res = await fetch(`/api/companies/${companyId}`, { method: 'DELETE' })
+      const res = await authedFetch(`/api/companies/${companyId}`, { method: 'DELETE' })
       if (!res.ok) throw new Error('Failed to delete')
-      router.push('/companies')
+      router.push('/')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     }
@@ -116,23 +117,50 @@ export default function CompanyPage() {
     return (
       <div className="text-center py-16">
         <p className="text-gray-500">Company not found</p>
-        <Link href="/companies" className="btn-primary mt-4 inline-flex">Back to companies</Link>
+        <Link href="/" className="btn-primary mt-4 inline-flex">Back to home</Link>
       </div>
     )
   }
 
   const isRunning = scan?.status === 'running' || scan?.status === 'queued'
 
+  async function handleExport(type: 'csv' | 'pdf') {
+    if (!scan?.id) return
+
+    try {
+      const res = await authedFetch(`/api/export/${type}/${scan.id}`)
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}))
+        throw new Error(payload.error ?? `Failed to export ${type.toUpperCase()}`)
+      }
+
+      const blob = await res.blob()
+      const disposition = res.headers.get('content-disposition')
+      const fileNameMatch = disposition?.match(/filename="(.+)"/)
+      const fileName = fileNameMatch?.[1] ?? `${company?.name ?? 'report'}.${type}`
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fileName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Export failed')
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <Link href="/companies" className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1 mb-2">
+          <Link href="/" className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1 mb-2">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
-            Companies
+            Home
           </Link>
           <h1 className="text-2xl font-bold text-gray-900">{company.name}</h1>
           {company.domain && (
@@ -149,20 +177,18 @@ export default function CompanyPage() {
         <div className="flex items-center gap-2">
           {scan?.status === 'completed' && (
             <>
-              <a
-                href={`/api/export/csv/${scan.id}`}
+              <button
                 className="btn-secondary text-xs"
-                download
+                onClick={() => handleExport('csv')}
               >
                 Export CSV
-              </a>
-              <a
-                href={`/api/export/pdf/${scan.id}`}
+              </button>
+              <button
                 className="btn-secondary text-xs"
-                download
+                onClick={() => handleExport('pdf')}
               >
                 Export PDF
-              </a>
+              </button>
             </>
           )}
           <button
