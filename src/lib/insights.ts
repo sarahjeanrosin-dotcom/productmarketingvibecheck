@@ -5,7 +5,7 @@ import type { ContentItem, InsightsJson } from './types'
 
 let _client: Anthropic | null = null
 function getClient() {
-  if (!_client) _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  if (!_client) _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 60000 })
   return _client
 }
 
