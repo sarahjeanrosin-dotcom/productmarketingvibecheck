@@ -3,7 +3,11 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { ContentItem, InsightsJson } from './types'
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+let _client: Anthropic | null = null
+function getClient() {
+  if (!_client) _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  return _client
+}
 
 // Summarize content items for the LLM (avoid huge context)
 function summarizeItems(items: ContentItem[]): string {
@@ -74,7 +78,7 @@ Respond ONLY with the JSON object (no markdown fences).`
   let insights_json: InsightsJson
 
   try {
-    const msg = await client.messages.create({
+    const msg = await getClient().messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       messages: [{ role: 'user', content: prompt }],

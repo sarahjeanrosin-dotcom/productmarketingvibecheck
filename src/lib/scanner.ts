@@ -192,17 +192,16 @@ export async function runScan(scanId: string, company: Company, accessToken?: st
     snippet: item.snippet,
   }))
 
+  const batches: typeof classificationInput[] = []
+  for (let i = 0; i < classificationInput.length; i += BATCH_SIZE) {
+    batches.push(classificationInput.slice(i, i + BATCH_SIZE))
+  }
+  const batchResults = await Promise.all(batches.map((batch) => classifyBatch(batch)))
   const classifications: Array<{
     content_type: ContentType
     category: ContentCategory
     confidence: number
-  }> = []
-
-  for (let i = 0; i < classificationInput.length; i += BATCH_SIZE) {
-    const batch = classificationInput.slice(i, i + BATCH_SIZE)
-    const results = await classifyBatch(batch)
-    classifications.push(...results)
-  }
+  }> = batchResults.flat()
 
   // ---- Save content items ----
   const contentItemRows = itemsToProcess.map((item, i) => {
