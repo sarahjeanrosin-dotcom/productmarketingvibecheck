@@ -108,22 +108,36 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: scanError?.message ?? 'Failed to create scan' }, { status: 500 })
   }
 
-  // Fire-and-forget scan execution to avoid gateway timeouts.
-  // UI polls GET /api/scans for progress.
-  void (async () => {
-    try {
-      // Replace-on-rerun: delete prior data while preserving this newly queued scan.
-      await deleteCompanyData(body.company_id, accessToken ?? undefined, scan.id)
-      await runScan(scan.id, company as Company, accessToken ?? undefined)
-    } catch (err: unknown) {
-      const msg = normalizeScanErrorMessage(err)
-      const bgDb = createServerClient(accessToken ?? undefined)
-      await bgDb
-        .from('scans')
-        .update({ status: 'failed', error: msg, completed_at: new Date().toISOString() })
-        .eq('id', scan.id)
-    }
-  })()
+  // Enqueue job
+  const { data: job, error: jobError } = await db
+    .from('scan_jobs')
+    .insert({
+      scan_id: scan.id,
+      company_id: body.company_id,
+      status: 'queued',
+    })
+    .select()
+    .single()
 
-  return NextResponse.json({ scan, queued: true }, { status: 201 })
+  if (jobError || !job) {
+    return NextResponse.json({ error: jobError?.message ?? 'Failed to enqueue scan job' }, { status: 500 })
+  }
+
+  // Trigger background worker (fire-and-forget). Errors here do not block the request.
+  const triggerSecret = process.env.INTERNAL_WORKER_SECRET
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || 'http://localhost:3000'
+  if (triggerSecret) {
+    void fetch(`${baseUrl}/.netlify/functions/scan-worker-background`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-worker-secret': triggerSecret,
+      },
+      body: JSON.stringify({ jobId: job.id }),
+    }).catch((err) => {
+      console.warn('Failed to trigger scan worker', err)
+    })
+  }
+
+  return NextResponse.json({ scan, queued: true, job_id: job.id }, { status: 201 })
 }
