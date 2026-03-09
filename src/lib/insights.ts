@@ -3,7 +3,52 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { ContentItem, InsightsJson } from './types'
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+let _client: Anthropic | null = null
+function getClient() {
+  if (!_client) _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 60000 })
+  return _client
+}
+
+function extractFirstJsonObject(text: string): string | null {
+  // Remove markdown fences if present.
+  const withoutFences = text.replace(/```json|```/gi, '').trim()
+  const start = withoutFences.indexOf('{')
+  if (start < 0) return null
+
+  let depth = 0
+  let inString = false
+  let escaped = false
+
+  for (let i = start; i < withoutFences.length; i++) {
+    const ch = withoutFences[i]
+
+    if (escaped) {
+      escaped = false
+      continue
+    }
+
+    if (ch === '\\') {
+      escaped = true
+      continue
+    }
+
+    if (ch === '"') {
+      inString = !inString
+      continue
+    }
+
+    if (inString) continue
+
+    if (ch === '{') depth++
+    if (ch === '}') depth--
+
+    if (depth === 0) {
+      return withoutFences.slice(start, i + 1)
+    }
+  }
+
+  return null
+}
 
 // Summarize content items for the LLM (avoid huge context)
 function summarizeItems(items: ContentItem[]): string {
@@ -74,18 +119,20 @@ Respond ONLY with the JSON object (no markdown fences).`
   let insights_json: InsightsJson
 
   try {
-    const msg = await client.messages.create({
+    const msg = await getClient().messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       messages: [{ role: 'user', content: prompt }],
     })
 
     const text = msg.content[0].type === 'text' ? msg.content[0].text : '{}'
-    // Strip any markdown fences if present
-    const clean = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
-    insights_json = JSON.parse(clean)
+    const jsonObject = extractFirstJsonObject(text)
+    if (!jsonObject) {
+      throw new Error('No JSON object found in model response')
+    }
+    insights_json = JSON.parse(jsonObject)
   } catch (err) {
-    console.warn('Insights generation failed, using fallback:', err)
+    console.warn('Insights generation failed, using fallback:', err instanceof Error ? err.message : err)
     insights_json = buildFallbackInsights(companyName, items)
   }
 

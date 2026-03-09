@@ -86,8 +86,8 @@ interface ScanItem {
   metrics: { views?: number; likes?: number; comments?: number } | null
 }
 
-export async function runScan(scanId: string, company: Company): Promise<void> {
-  const db = createServerClient()
+export async function runScan(scanId: string, company: Company, accessToken?: string): Promise<void> {
+  const db = createServerClient(accessToken)
   const startTime = Date.now()
 
   const sourceConfig = company.source_config
@@ -192,17 +192,16 @@ export async function runScan(scanId: string, company: Company): Promise<void> {
     snippet: item.snippet,
   }))
 
+  const batches: typeof classificationInput[] = []
+  for (let i = 0; i < classificationInput.length; i += BATCH_SIZE) {
+    batches.push(classificationInput.slice(i, i + BATCH_SIZE))
+  }
+  const batchResults = await Promise.all(batches.map((batch) => classifyBatch(batch)))
   const classifications: Array<{
     content_type: ContentType
     category: ContentCategory
     confidence: number
-  }> = []
-
-  for (let i = 0; i < classificationInput.length; i += BATCH_SIZE) {
-    const batch = classificationInput.slice(i, i + BATCH_SIZE)
-    const results = await classifyBatch(batch)
-    classifications.push(...results)
-  }
+  }> = batchResults.flat()
 
   // ---- Save content items ----
   const contentItemRows = itemsToProcess.map((item, i) => {
@@ -352,12 +351,26 @@ function addYouTubeVideo(
 // Pre-scan cleanup (replace-on-rerun)
 // ============================================================
 
-export async function deleteCompanyData(companyId: string): Promise<void> {
-  const db = createServerClient()
+export async function deleteCompanyData(
+  companyId: string,
+  accessToken?: string,
+  keepScanId?: string
+): Promise<void> {
+  const db = createServerClient(accessToken)
 
   // Cascade deletes via FK: deleting scans cascades to content_items and insights
   // But to be explicit:
-  await db.from('insights').delete().eq('company_id', companyId)
-  await db.from('content_items').delete().eq('company_id', companyId)
-  await db.from('scans').delete().eq('company_id', companyId)
+  let insightsDelete = db.from('insights').delete().eq('company_id', companyId)
+  let itemsDelete = db.from('content_items').delete().eq('company_id', companyId)
+  let scansDelete = db.from('scans').delete().eq('company_id', companyId)
+
+  if (keepScanId) {
+    insightsDelete = insightsDelete.neq('scan_id', keepScanId)
+    itemsDelete = itemsDelete.neq('scan_id', keepScanId)
+    scansDelete = scansDelete.neq('id', keepScanId)
+  }
+
+  await insightsDelete
+  await itemsDelete
+  await scansDelete
 }

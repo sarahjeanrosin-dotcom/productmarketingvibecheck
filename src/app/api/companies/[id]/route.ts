@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
+import { requireActiveSubscription } from '@/lib/auth-server'
 import type { UpdateCompanyInput } from '@/lib/types'
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { accessToken, errorResponse } = await requireActiveSubscription(req)
+  if (errorResponse) return errorResponse
+
   const { id } = await params
-  const db = createServerClient()
+  const db = createServerClient(accessToken ?? undefined)
 
   const { data, error } = await db
     .from('companies')
@@ -26,8 +30,11 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { accessToken, errorResponse } = await requireActiveSubscription(req)
+  if (errorResponse) return errorResponse
+
   const { id } = await params
-  const db = createServerClient()
+  const db = createServerClient(accessToken ?? undefined)
 
   let body: UpdateCompanyInput
   try {
@@ -62,11 +69,14 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { accessToken, errorResponse } = await requireActiveSubscription(req)
+  if (errorResponse) return errorResponse
+
   const { id } = await params
-  const db = createServerClient()
+  const db = createServerClient(accessToken ?? undefined)
 
   const { error } = await db
     .from('companies')

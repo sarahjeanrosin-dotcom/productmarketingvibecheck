@@ -3,7 +3,11 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { ContentType, ContentCategory, ContentSource } from './types'
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+let _client: Anthropic | null = null
+function getClient() {
+  if (!_client) _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 30000 })
+  return _client
+}
 
 export interface ClassificationResult {
   content_type: ContentType
@@ -179,7 +183,7 @@ Respond ONLY with a JSON array, one object per item, in order:
 [{"content_type": "...", "category": "...", "confidence": 0.9}, ...]`
 
   try {
-    const msg = await client.messages.create({
+    const msg = await getClient().messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 2048,
       messages: [{ role: 'user', content: prompt }],
