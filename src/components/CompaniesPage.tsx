@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import type { Company } from '@/lib/types'
-import { authedFetch } from '@/lib/authed-fetch'
+import { authedFetch, getApiErrorMessage, readJsonResponse } from '@/lib/authed-fetch'
 
 export default function CompaniesPage() {
   const [companies, setCompanies] = useState<Company[]>([])
@@ -12,10 +12,11 @@ export default function CompaniesPage() {
 
   useEffect(() => {
     authedFetch('/api/companies')
-      .then((r) => r.json())
+      .then((r) => readJsonResponse<Company[] | { error?: string }>(r).then((data) => ({ r, data })))
       .then((data) => {
-        if (data.error) throw new Error(data.error)
-        setCompanies(data)
+        if (!data.r.ok) throw new Error(getApiErrorMessage(data.data, 'Failed to load companies'))
+        if (!Array.isArray(data.data)) throw new Error('Invalid API response')
+        setCompanies(data.data)
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))

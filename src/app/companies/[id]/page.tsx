@@ -7,7 +7,7 @@ import type { Company, Scan, ContentItem, Insight } from '@/lib/types'
 import ScanStatusPanel from '@/components/ScanStatusPanel'
 import ResultsTable from '@/components/ResultsTable'
 import InsightsPanel from '@/components/InsightsPanel'
-import { authedFetch } from '@/lib/authed-fetch'
+import { authedFetch, getApiErrorMessage, readJsonResponse } from '@/lib/authed-fetch'
 
 export default function CompanyPage() {
   const params = useParams()
@@ -30,12 +30,22 @@ export default function CompanyPage() {
         authedFetch(`/api/scans?company_id=${companyId}`),
       ])
 
-      const companyData = await companyRes.json()
-      if (!companyRes.ok) throw new Error(companyData.error ?? 'Failed to load company')
+      const companyData = await readJsonResponse<Company | { error?: string }>(companyRes)
+      if (
+        !companyRes.ok ||
+        !companyData ||
+        Array.isArray(companyData) ||
+        !('id' in companyData)
+      ) {
+        throw new Error(getApiErrorMessage(companyData, 'Failed to load company'))
+      }
       setCompany(companyData)
 
-      const scanData = await scanRes.json()
-      if (scanRes.ok && scanData) {
+      const scanData = await readJsonResponse<{ scan: Scan | null; items?: ContentItem[]; insight?: Insight | null; error?: string }>(scanRes)
+      if (!scanRes.ok) {
+        throw new Error(getApiErrorMessage(scanData, 'Failed to load scan data'))
+      }
+      if (scanData) {
         setScan(scanData.scan)
         setItems(scanData.items ?? [])
         setInsight(scanData.insight ?? null)
@@ -55,11 +65,11 @@ export default function CompanyPage() {
   useEffect(() => {
     if (!scan || (scan.status !== 'running' && scan.status !== 'queued')) return
 
-      const interval = setInterval(async () => {
+    const interval = setInterval(async () => {
       const res = await authedFetch(`/api/scans?company_id=${companyId}`)
       if (!res.ok) return
-      const data = await res.json()
-      if (data.scan) {
+      const data = await readJsonResponse<{ scan: Scan | null; items?: ContentItem[]; insight?: Insight | null }>(res)
+      if (data?.scan) {
         setScan(data.scan)
         setItems(data.items ?? [])
         setInsight(data.insight ?? null)
@@ -81,8 +91,8 @@ export default function CompanyPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ company_id: companyId }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to start scan')
+      const data = await readJsonResponse<{ scan?: Scan; error?: string }>(res)
+      if (!res.ok || !data?.scan) throw new Error(getApiErrorMessage(data, 'Failed to start scan'))
       setScan(data.scan)
       setItems([])
       setInsight(null)
@@ -130,8 +140,8 @@ export default function CompanyPage() {
     try {
       const res = await authedFetch(`/api/export/${type}/${scan.id}`)
       if (!res.ok) {
-        const payload = await res.json().catch(() => ({}))
-        throw new Error(payload.error ?? `Failed to export ${type.toUpperCase()}`)
+        const payload = await readJsonResponse<{ error?: string }>(res)
+        throw new Error(payload?.error ?? `Failed to export ${type.toUpperCase()}`)
       }
 
       const blob = await res.blob()

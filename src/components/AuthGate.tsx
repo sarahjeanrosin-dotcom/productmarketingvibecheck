@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import type { Session } from '@supabase/supabase-js'
 import { getBrowserClient } from '@/lib/supabase'
-import { authedFetch } from '@/lib/authed-fetch'
+import { authedFetch, readJsonResponse } from '@/lib/authed-fetch'
 
 const SUBSCRIPTION_CACHE_KEY = 'subscription_active_v1'
 
@@ -65,7 +65,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
       try {
         const res = await authedFetch('/api/billing/status')
         if (!res.ok) throw new Error('Billing status check failed')
-        const data = await res.json()
+        const data = await readJsonResponse<{ isActive?: boolean }>(res)
         if (cancelled) return
         const isActive = Boolean(data?.isActive)
         setSubscriptionActive(isActive)

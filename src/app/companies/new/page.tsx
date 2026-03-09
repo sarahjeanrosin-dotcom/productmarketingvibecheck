@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { DEFAULT_EXCLUDE_KEYWORDS } from '@/lib/types'
-import { authedFetch } from '@/lib/authed-fetch'
+import { authedFetch, getApiErrorMessage, readJsonResponse } from '@/lib/authed-fetch'
 
 export default function NewCompanyPage() {
   const router = useRouter()
@@ -52,8 +52,8 @@ export default function NewCompanyPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to create company')
+      const data = await readJsonResponse<{ id?: string; error?: string }>(res)
+      if (!res.ok || !data?.id) throw new Error(getApiErrorMessage(data, 'Failed to create company'))
       router.push(`/companies/${data.id}`)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Unknown error')

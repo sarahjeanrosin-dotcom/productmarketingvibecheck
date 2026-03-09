@@ -4,8 +4,16 @@ import { requireActiveSubscription } from '@/lib/auth-server'
 import { runScan, deleteCompanyData } from '@/lib/scanner'
 import type { Company } from '@/lib/types'
 
-// Allow up to 5 minutes for scan execution
-export const maxDuration = 300
+// Keep request duration short; scan runs asynchronously after enqueue.
+export const maxDuration = 60
+
+function normalizeScanErrorMessage(err: unknown): string {
+  const raw = err instanceof Error ? err.message : 'Scan failed'
+  if (/Unexpected token/.test(raw) || /is not valid JSON/i.test(raw)) {
+    return 'Upstream service returned an invalid response. Please retry; if it persists, check API key/limits.'
+  }
+  return raw
+}
 
 export async function GET(req: NextRequest) {
   const { accessToken, errorResponse } = await requireActiveSubscription(req)
@@ -86,9 +94,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Company not found' }, { status: 404 })
   }
 
-  // Replace-on-rerun: delete prior data
-  await deleteCompanyData(body.company_id, accessToken ?? undefined)
-
   // Create new scan record
   const { data: scan, error: scanError } = await db
     .from('scans')
@@ -103,25 +108,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: scanError?.message ?? 'Failed to create scan' }, { status: 500 })
   }
 
-  // Run scan synchronously (function has maxDuration=300 for Netlify Pro)
-  // This keeps the architecture simple for V1
-  try {
-    await runScan(scan.id, company as Company, accessToken ?? undefined)
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Scan failed'
-    await db
-      .from('scans')
-      .update({ status: 'failed', error: msg, completed_at: new Date().toISOString() })
-      .eq('id', scan.id)
-    return NextResponse.json({ error: msg }, { status: 500 })
-  }
+  // Fire-and-forget scan execution to avoid gateway timeouts.
+  // UI polls GET /api/scans for progress.
+  void (async () => {
+    try {
+      // Replace-on-rerun: delete prior data while preserving this newly queued scan.
+      await deleteCompanyData(body.company_id, accessToken ?? undefined, scan.id)
+      await runScan(scan.id, company as Company, accessToken ?? undefined)
+    } catch (err: unknown) {
+      const msg = normalizeScanErrorMessage(err)
+      const bgDb = createServerClient(accessToken ?? undefined)
+      await bgDb
+        .from('scans')
+        .update({ status: 'failed', error: msg, completed_at: new Date().toISOString() })
+        .eq('id', scan.id)
+    }
+  })()
 
-  // Return completed scan
-  const { data: completedScan } = await db
-    .from('scans')
-    .select('*')
-    .eq('id', scan.id)
-    .single()
-
-  return NextResponse.json({ scan: completedScan }, { status: 201 })
+  return NextResponse.json({ scan, queued: true }, { status: 201 })
 }

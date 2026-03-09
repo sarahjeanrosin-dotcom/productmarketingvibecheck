@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { authedFetch } from '@/lib/authed-fetch'
+import { authedFetch, getApiErrorMessage, readJsonResponse } from '@/lib/authed-fetch'
 import { getBrowserClient } from '@/lib/supabase'
 
 interface BillingStatusResponse {
@@ -28,8 +28,12 @@ export default function SettingsPage() {
 
   useEffect(() => {
     authedFetch('/api/billing/status')
-      .then((res) => res.json())
-      .then((data) => {
+      .then((res) => readJsonResponse<BillingStatusResponse | { error?: string }>(res).then((data) => ({ res, data })))
+      .then(({ res, data }) => {
+        if (!res.ok) throw new Error(getApiErrorMessage(data, 'Failed to load billing status'))
+        if (!data || Array.isArray(data) || !('isActive' in data)) {
+          throw new Error('Invalid billing status response')
+        }
         setStatus(data)
       })
       .catch((err: unknown) => {
@@ -50,9 +54,9 @@ export default function SettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cancel_path: cancelPath }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to start checkout')
-      if (!data.url) throw new Error('Stripe checkout URL missing')
+      const data = await readJsonResponse<{ url?: string; error?: string }>(res)
+      if (!res.ok) throw new Error(getApiErrorMessage(data, 'Failed to start checkout'))
+      if (!data?.url) throw new Error('Stripe checkout URL missing')
       window.location.href = data.url
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to start checkout')
@@ -72,8 +76,8 @@ export default function SettingsPage() {
           details: cancelDetails,
         }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Failed to cancel subscription')
+      const data = await readJsonResponse<{ error?: string }>(res)
+      if (!res.ok) throw new Error(getApiErrorMessage(data, 'Failed to cancel subscription'))
       await getBrowserClient().auth.signOut()
       router.replace('/signin')
     } catch (err: unknown) {
