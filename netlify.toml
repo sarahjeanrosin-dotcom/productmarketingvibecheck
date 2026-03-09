@@ -16,3 +16,7 @@
   for = "/api/*"
   [headers.values]
     X-Content-Type-Options = "nosniff"
+
+[[scheduled_functions]]
+path = "/.netlify/functions/scan-reaper-scheduler"
+schedule = "*/10 * * * *" # every 10 minutes
