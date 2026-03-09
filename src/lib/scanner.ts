@@ -89,6 +89,8 @@ interface ScanItem {
 export async function runScan(scanId: string, company: Company): Promise<void> {
   const db = createServerClient()
   const startTime = Date.now()
+  // Leave 30s for classification, DB writes, and insights before the 5-min Netlify timeout
+  const BUDGET_MS = 270_000
 
   const sourceConfig = company.source_config
   const maxItems = sourceConfig.max_items ?? 100
@@ -113,7 +115,8 @@ export async function runScan(scanId: string, company: Company): Promise<void> {
   while (
     iteration < maxIterations &&
     allItems.length < maxItems &&
-    noNewCount < N_CONSECUTIVE
+    noNewCount < N_CONSECUTIVE &&
+    Date.now() - startTime < BUDGET_MS
   ) {
     const newItemsBefore = allItems.length
 

@@ -12,6 +12,9 @@
   # Allow up to 5 minutes for scan API routes
   node_bundler = "nft"
 
+[functions."___netlify-server-handler"]
+  timeout = 300
+
 [[headers]]
   for = "/api/*"
   [headers.values]
