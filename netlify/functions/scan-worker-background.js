@@ -3,6 +3,7 @@ const { runScan } = require('../../src/lib/scanner')
 
 const WORKER_SECRET = process.env.INTERNAL_WORKER_SECRET
 const HEARTBEAT_MS = 60 * 1000
+const MAX_JOBS = parseInt(process.env.SCAN_WORKER_MAX_JOBS || '1', 10)
 
 exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') {
@@ -13,63 +14,62 @@ exports.handler = async function (event) {
     return { statusCode: 401, body: 'Unauthorized' }
   }
 
-  let body = {}
-  try {
-    body = JSON.parse(event.body || '{}')
-  } catch {
-    return { statusCode: 400, body: 'Invalid JSON' }
-  }
-
-  const jobId = body.jobId
-  if (!jobId) {
-    return { statusCode: 400, body: 'jobId required' }
-  }
-
   const supabase = getSupabaseAdminClient()
 
-  // Load job
-  const { data: job, error: jobError } = await supabase
+  let processed = 0
+  while (processed < MAX_JOBS) {
+    const job = await claimNextJob(supabase)
+    if (!job) break
+    processed++
+    await processJob(supabase, job)
+  }
+
+  return { statusCode: 200, body: JSON.stringify({ processed }) }
+}
+
+async function claimNextJob(supabase) {
+  const { data: candidate, error } = await supabase
     .from('scan_jobs')
     .select('*')
-    .eq('id', jobId)
-    .single()
+    .eq('status', 'queued')
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
 
-  if (jobError || !job) {
-    return { statusCode: 404, body: 'Job not found' }
+  if (error && error.code !== 'PGRST116') {
+    console.warn('Claim select error:', error.message)
+    return null
   }
-
-  if (job.status !== 'queued') {
-    return { statusCode: 200, body: 'Job already handled' }
-  }
+  if (!candidate) return null
 
   const nowIso = new Date().toISOString()
   const workerId = `worker-${Math.random().toString(36).slice(2, 10)}`
 
-  // Mark running
-  const { error: claimError } = await supabase
+  const { data: claimed, error: updateError } = await supabase
     .from('scan_jobs')
     .update({
       status: 'running',
-      attempts: job.attempts + 1,
-      started_at: job.started_at ?? nowIso,
+      attempts: candidate.attempts + 1,
+      started_at: candidate.started_at ?? nowIso,
       last_heartbeat: nowIso,
       worker_id: workerId,
       updated_at: nowIso,
     })
-    .eq('id', jobId)
+    .eq('id', candidate.id)
     .eq('status', 'queued')
+    .select()
+    .single()
 
-  if (claimError) {
-    return { statusCode: 500, body: 'Failed to claim job' }
+  if (updateError) {
+    console.warn('Claim update error:', updateError.message)
+    return null
   }
 
-  // Set scan running
-  await supabase
-    .from('scans')
-    .update({ status: 'running', started_at: nowIso })
-    .eq('id', job.scan_id)
+  return claimed
+}
 
-  // Keep heartbeat while running
+async function processJob(supabase, job) {
+  const jobId = job.id
   const heartbeat = setInterval(async () => {
     await supabase
       .from('scan_jobs')
@@ -78,7 +78,6 @@ exports.handler = async function (event) {
   }, HEARTBEAT_MS)
 
   try {
-    // Run scan
     const { data: company, error: companyError } = await supabase
       .from('companies')
       .select('*')
@@ -89,10 +88,8 @@ exports.handler = async function (event) {
       throw new Error('Company not found for job')
     }
 
-    // Replace-on-rerun: delete prior data (keep this scan id)
     await deletePriorData(supabase, job.company_id, job.scan_id)
 
-    // Use service role key as bearer for Supabase client inside runScan
     const serviceToken = process.env.SUPABASE_SERVICE_ROLE_KEY
     await runScan(job.scan_id, company, serviceToken)
 
@@ -129,8 +126,6 @@ exports.handler = async function (event) {
   } finally {
     clearInterval(heartbeat)
   }
-
-  return { statusCode: 200, body: 'ok' }
 }
 
 async function deletePriorData(supabase, companyId, keepScanId) {
