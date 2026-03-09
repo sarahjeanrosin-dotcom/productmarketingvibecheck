@@ -86,8 +86,8 @@ interface ScanItem {
   metrics: { views?: number; likes?: number; comments?: number } | null
 }
 
-export async function runScan(scanId: string, company: Company): Promise<void> {
-  const db = createServerClient()
+export async function runScan(scanId: string, company: Company, accessToken?: string): Promise<void> {
+  const db = createServerClient(accessToken)
   const startTime = Date.now()
 
   const sourceConfig = company.source_config
@@ -352,8 +352,8 @@ function addYouTubeVideo(
 // Pre-scan cleanup (replace-on-rerun)
 // ============================================================
 
-export async function deleteCompanyData(companyId: string): Promise<void> {
-  const db = createServerClient()
+export async function deleteCompanyData(companyId: string, accessToken?: string): Promise<void> {
+  const db = createServerClient(accessToken)
 
   // Cascade deletes via FK: deleting scans cascades to content_items and insights
   // But to be explicit:

@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
+import { requireActiveSubscription } from '@/lib/auth-server'
 import { PDFDocument, StandardFonts, rgb, PageSizes } from 'pdf-lib'
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ scanId: string }> }
 ) {
+  const { accessToken, errorResponse } = await requireActiveSubscription(req)
+  if (errorResponse) return errorResponse
+
   const { scanId } = await params
-  const db = createServerClient()
+  const db = createServerClient(accessToken ?? undefined)
 
   const { data: scan, error: scanError } = await db
     .from('scans')

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
+import { requireActiveSubscription } from '@/lib/auth-server'
 import { runScan, deleteCompanyData } from '@/lib/scanner'
 import type { Company } from '@/lib/types'
 
@@ -7,6 +8,9 @@ import type { Company } from '@/lib/types'
 export const maxDuration = 300
 
 export async function GET(req: NextRequest) {
+  const { accessToken, errorResponse } = await requireActiveSubscription(req)
+  if (errorResponse) return errorResponse
+
   const { searchParams } = new URL(req.url)
   const companyId = searchParams.get('company_id')
 
@@ -14,7 +18,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'company_id required' }, { status: 400 })
   }
 
-  const db = createServerClient()
+  const db = createServerClient(accessToken ?? undefined)
 
   // Get the latest scan
   const { data: scan, error: scanError } = await db
@@ -55,7 +59,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const db = createServerClient()
+  const { accessToken, errorResponse } = await requireActiveSubscription(req)
+  if (errorResponse) return errorResponse
+
+  const db = createServerClient(accessToken ?? undefined)
 
   let body: { company_id: string }
   try {
@@ -80,7 +87,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Replace-on-rerun: delete prior data
-  await deleteCompanyData(body.company_id)
+  await deleteCompanyData(body.company_id, accessToken ?? undefined)
 
   // Create new scan record
   const { data: scan, error: scanError } = await db
@@ -99,7 +106,7 @@ export async function POST(req: NextRequest) {
   // Run scan synchronously (function has maxDuration=300 for Netlify Pro)
   // This keeps the architecture simple for V1
   try {
-    await runScan(scan.id, company as Company)
+    await runScan(scan.id, company as Company, accessToken ?? undefined)
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Scan failed'
     await db
