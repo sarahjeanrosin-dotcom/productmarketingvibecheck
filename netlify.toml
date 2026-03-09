@@ -9,8 +9,8 @@
   package = "@netlify/plugin-nextjs"
 
 [functions]
-  # Allow up to 5 minutes for scan API routes
-  node_bundler = "nft"
+  # Use esbuild so TS/ESM shared code from src/ is bundled into functions
+  node_bundler = "esbuild"
 
 [[headers]]
   for = "/api/*"
