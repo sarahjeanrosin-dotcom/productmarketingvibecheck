@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
 import { requireAuth } from '@/lib/auth-server'
+import { generateComparison } from '@/lib/compare'
 
-export const maxDuration = 60
+export const maxDuration = 300
 
 export async function GET(req: NextRequest) {
   const { accessToken, errorResponse } = await requireAuth(req)
@@ -94,20 +95,31 @@ export async function POST(req: NextRequest) {
   const scanA = scanARes.data
   const scanB = scanBRes.data
 
-  // Verify insights exist before queuing
-  const [insightARes, insightBRes] = await Promise.all([
-    db.from('insights').select('id').eq('scan_id', scanA.id).single(),
-    db.from('insights').select('id').eq('scan_id', scanB.id).single(),
+  // Load insights and content items in parallel
+  const [insightAFull, insightBFull, itemsARes, itemsBRes] = await Promise.all([
+    db.from('insights').select('*').eq('scan_id', scanA.id).single(),
+    db.from('insights').select('*').eq('scan_id', scanB.id).single(),
+    db.from('content_items').select('*').eq('scan_id', scanA.id),
+    db.from('content_items').select('*').eq('scan_id', scanB.id),
   ])
 
-  if (insightARes.error || !insightARes.data) {
+  if (insightAFull.error || !insightAFull.data) {
     return NextResponse.json({ error: `No insights found for ${companyARes.data.name}` }, { status: 400 })
   }
-  if (insightBRes.error || !insightBRes.data) {
+  if (insightBFull.error || !insightBFull.data) {
     return NextResponse.json({ error: `No insights found for ${companyBRes.data.name}` }, { status: 400 })
   }
 
-  // Create comparison record with status 'processing' — worker fills in the analysis
+  // Generate comparison synchronously
+  const { summary_md, comparison_json } = await generateComparison(
+    companyARes.data.name,
+    companyBRes.data.name,
+    insightAFull.data.insights_json,
+    insightBFull.data.insights_json,
+    itemsARes.data ?? [],
+    itemsBRes.data ?? []
+  )
+
   const { data: comparison, error: saveError } = await db
     .from('comparisons')
     .insert({
@@ -115,31 +127,15 @@ export async function POST(req: NextRequest) {
       company_b_id: body.company_b_id,
       scan_a_id: scanA.id,
       scan_b_id: scanB.id,
-      summary_md: '',
-      comparison_json: {},
-      status: 'processing',
+      summary_md,
+      comparison_json,
+      status: 'completed',
     })
     .select()
     .single()
 
   if (saveError || !comparison) {
-    return NextResponse.json({ error: saveError?.message ?? 'Failed to create comparison' }, { status: 500 })
-  }
-
-  // Trigger background worker (fire-and-forget)
-  const triggerSecret = process.env.INTERNAL_WORKER_SECRET
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || 'http://localhost:3000'
-  if (triggerSecret) {
-    void fetch(`${baseUrl}/.netlify/functions/comparison-worker-background`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-worker-secret': triggerSecret,
-      },
-      body: JSON.stringify({ comparisonId: comparison.id }),
-    }).catch((err) => {
-      console.warn('Failed to trigger comparison worker', err)
-    })
+    return NextResponse.json({ error: saveError?.message ?? 'Failed to save comparison' }, { status: 500 })
   }
 
   return NextResponse.json({
