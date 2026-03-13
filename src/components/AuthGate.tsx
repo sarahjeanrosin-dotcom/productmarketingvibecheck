@@ -9,6 +9,11 @@ import { authedFetch, readJsonResponse } from '@/lib/authed-fetch'
 const SUBSCRIPTION_CACHE_KEY = 'subscription_active_v1'
 
 export default function AuthGate({ children }: { children: React.ReactNode }) {
+  if (process.env.NEXT_PUBLIC_SKIP_AUTH === 'true') return <>{children}</>
+  return <AuthGateInner>{children}</AuthGateInner>
+}
+
+function AuthGateInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const [session, setSession] = useState<Session | null>(null)
