@@ -60,6 +60,18 @@ export default function ComparePage() {
 
   const eligibleCompanies = companies.filter((c) => c.has_completed_scan)
 
+  async function handleDelete(id: string, e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!confirm('Delete this comparison?')) return
+    try {
+      await authedFetch(`/api/comparisons/${id}`, { method: 'DELETE' })
+      setComparisons((prev) => prev.filter((c) => c.id !== id))
+    } catch {
+      // silently ignore
+    }
+  }
+
   async function handleGenerate() {
     if (!companyAId || !companyBId) return
     setGenerating(true)
@@ -176,23 +188,32 @@ export default function ComparePage() {
         <div className="space-y-3">
           <h2 className="text-sm font-semibold text-gray-900">Past comparisons</h2>
           {comparisons.map((comp) => (
-            <Link
-              key={comp.id}
-              href={`/compare/${comp.id}`}
-              className="card p-4 flex items-center justify-between hover:border-brand-300 transition-colors block"
-            >
-              <div>
+            <div key={comp.id} className="card p-4 flex items-center justify-between hover:border-brand-300 transition-colors">
+              <Link href={`/compare/${comp.id}`} className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900">
                   {comp.company_a_name} <span className="text-gray-400 mx-1">vs</span> {comp.company_b_name}
                 </p>
                 <p className="text-xs text-gray-400 mt-0.5">
                   {new Date(comp.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                 </p>
+              </Link>
+              <div className="flex items-center gap-2 ml-3 shrink-0">
+                <Link href={`/compare/${comp.id}`}>
+                  <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </Link>
+                <button
+                  onClick={(e) => handleDelete(comp.id, e)}
+                  className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                  title="Delete comparison"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
               </div>
-              <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </Link>
+            </div>
           ))}
         </div>
       )}
