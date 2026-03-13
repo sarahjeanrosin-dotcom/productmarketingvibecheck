@@ -168,6 +168,7 @@ export interface Comparison {
   scan_b_id: string
   summary_md: string
   comparison_json: ComparisonJson
+  status: 'processing' | 'completed' | 'failed'
   created_at: string
 }
 

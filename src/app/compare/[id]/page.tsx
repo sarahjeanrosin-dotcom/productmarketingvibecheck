@@ -19,12 +19,17 @@ export default function ComparisonDetailPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    let pollTimer: ReturnType<typeof setTimeout> | null = null
+
     async function load() {
       try {
         const res = await authedFetch(`/api/comparisons/${id}`)
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? 'Failed to load comparison')
         setComparison(data)
+        if (data.status === 'processing') {
+          pollTimer = setTimeout(load, 3000)
+        }
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Unknown error')
       } finally {
@@ -32,9 +37,31 @@ export default function ComparisonDetailPage() {
       }
     }
     load()
+    return () => { if (pollTimer) clearTimeout(pollTimer) }
   }, [id])
 
   if (loading) return <div className="text-center py-16 text-gray-400">Loading…</div>
+
+  if (comparison?.status === 'processing') {
+    return (
+      <div className="text-center py-16 space-y-3">
+        <svg className="w-8 h-8 animate-spin mx-auto text-brand-500" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+        </svg>
+        <p className="text-gray-500 text-sm">Generating analysis… this may take 30–60 seconds.</p>
+      </div>
+    )
+  }
+
+  if (comparison?.status === 'failed') {
+    return (
+      <div className="text-center py-16">
+        <p className="text-red-500">Analysis generation failed. Please go back and try again.</p>
+        <Link href="/compare" className="btn-primary mt-4 inline-flex">Back to Compare</Link>
+      </div>
+    )
+  }
 
   if (error || !comparison) {
     return (
