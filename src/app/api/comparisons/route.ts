@@ -4,6 +4,8 @@ import { requireAuth } from '@/lib/auth-server'
 import { generateComparison } from '@/lib/compare'
 import type { InsightsJson, ContentItem } from '@/lib/types'
 
+export const maxDuration = 300
+
 export async function GET(req: NextRequest) {
   const { accessToken, errorResponse } = await requireAuth(req)
   if (errorResponse) return errorResponse
