@@ -48,6 +48,8 @@ export async function POST(req: NextRequest) {
       domain: body.domain?.trim() || null,
       include_keywords: body.include_keywords?.length ? body.include_keywords : null,
       exclude_keywords: body.exclude_keywords?.length ? body.exclude_keywords : DEFAULT_EXCLUDE_KEYWORDS,
+      allowed_domains: body.allowed_domains?.length ? body.allowed_domains : null,
+      blocked_domains: body.blocked_domains?.length ? body.blocked_domains : null,
       source_config: sourceConfig,
     })
     .select()

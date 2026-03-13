@@ -41,6 +41,8 @@ export async function PATCH(
   if (body.domain !== undefined) updates.domain = body.domain?.trim() || null
   if (body.include_keywords !== undefined) updates.include_keywords = body.include_keywords
   if (body.exclude_keywords !== undefined) updates.exclude_keywords = body.exclude_keywords
+  if (body.allowed_domains !== undefined) updates.allowed_domains = body.allowed_domains?.length ? body.allowed_domains : null
+  if (body.blocked_domains !== undefined) updates.blocked_domains = body.blocked_domains?.length ? body.blocked_domains : null
   if (body.source_config !== undefined) {
     // Merge with existing config
     const existing = await db.from('companies').select('source_config').eq('id', id).single()

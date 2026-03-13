@@ -53,7 +53,12 @@ function hashUrl(url: string): string {
   return Math.abs(hash).toString(36)
 }
 
-function isExcluded(url: string, extraKeywords: string[]): boolean {
+function isExcluded(
+  url: string,
+  extraKeywords: string[],
+  allowedDomains: string[],
+  blockedDomains: string[]
+): boolean {
   const lower = url.toLowerCase()
 
   // Check URL pattern exclusions
@@ -65,6 +70,19 @@ function isExcluded(url: string, extraKeywords: string[]): boolean {
   const allKeywords = [...DEFAULT_EXCLUDE_KEYWORDS, ...extraKeywords]
   for (const kw of allKeywords) {
     if (lower.includes(kw.toLowerCase())) return true
+  }
+
+  // Domain filtering
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./, '')
+    if (allowedDomains.length > 0 && !allowedDomains.some((d) => hostname === d || hostname.endsWith('.' + d))) {
+      return true
+    }
+    if (blockedDomains.some((d) => hostname === d || hostname.endsWith('.' + d))) {
+      return true
+    }
+  } catch {
+    // invalid URL — skip domain check
   }
 
   return false
@@ -99,6 +117,8 @@ export async function runScan(scanId: string, company: Company): Promise<void> {
 
   const includeKeywords = company.include_keywords ?? []
   const excludeKeywords = company.exclude_keywords ?? []
+  const allowedDomains = (company.allowed_domains ?? []).map((d) => d.replace(/^www\./, '').toLowerCase())
+  const blockedDomains = (company.blocked_domains ?? []).map((d) => d.replace(/^www\./, '').toLowerCase())
 
   // Update scan to running
   await db.from('scans').update({
@@ -127,7 +147,7 @@ export async function runScan(scanId: string, company: Company): Promise<void> {
       fetchPromises.push(
         fetchWebResults(company.name, company.domain, iteration, includeKeywords).then((results) => {
           for (const r of results) {
-            addSerperResult(r, 'web', seenHashes, allItems, excludeKeywords)
+            addSerperResult(r, 'web', seenHashes, allItems, excludeKeywords, allowedDomains, blockedDomains)
             if (allItems.length >= maxItems) break
           }
         }).catch((err) => console.warn('Web fetch error:', err))
@@ -138,7 +158,7 @@ export async function runScan(scanId: string, company: Company): Promise<void> {
       fetchPromises.push(
         fetchRedditResults(company.name, iteration).then((results) => {
           for (const r of results) {
-            addSerperResult(r, 'reddit', seenHashes, allItems, excludeKeywords)
+            addSerperResult(r, 'reddit', seenHashes, allItems, excludeKeywords, allowedDomains, blockedDomains)
             if (allItems.length >= maxItems) break
           }
         }).catch((err) => console.warn('Reddit fetch error:', err))
@@ -150,7 +170,7 @@ export async function runScan(scanId: string, company: Company): Promise<void> {
       fetchPromises.push(
         fetchReviewResults(company.name).then((results) => {
           for (const r of results) {
-            addSerperResult(r, 'web', seenHashes, allItems, excludeKeywords)
+            addSerperResult(r, 'web', seenHashes, allItems, excludeKeywords, allowedDomains, blockedDomains)
             if (allItems.length >= maxItems) break
           }
         }).catch((err) => console.warn('Review fetch error:', err))
@@ -296,10 +316,12 @@ function addSerperResult(
   defaultSource: ContentSource,
   seenHashes: Set<string>,
   allItems: ScanItem[],
-  excludeKeywords: string[]
+  excludeKeywords: string[],
+  allowedDomains: string[],
+  blockedDomains: string[]
 ): void {
   if (!result.link) return
-  if (isExcluded(result.link, excludeKeywords)) return
+  if (isExcluded(result.link, excludeKeywords, allowedDomains, blockedDomains)) return
 
   const canonical = canonicalizeUrl(result.link)
   const hash = hashUrl(canonical)

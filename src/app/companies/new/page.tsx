@@ -14,6 +14,8 @@ export default function NewCompanyPage() {
   const [domain, setDomain] = useState('')
   const [includeKeywords, setIncludeKeywords] = useState('')
   const [extraExcludeKeywords, setExtraExcludeKeywords] = useState('')
+  const [allowedDomains, setAllowedDomains] = useState('')
+  const [blockedDomains, setBlockedDomains] = useState('')
   const [sourceWeb, setSourceWeb] = useState(true)
   const [sourceYoutube, setSourceYoutube] = useState(true)
   const [sourceReddit, setSourceReddit] = useState(true)
@@ -35,6 +37,8 @@ export default function NewCompanyPage() {
         ...DEFAULT_EXCLUDE_KEYWORDS,
         ...extraExcludeKeywords.split(',').map((k) => k.trim()).filter(Boolean),
       ],
+      allowed_domains: allowedDomains.split(',').map((d) => d.trim().replace(/^https?:\/\//, '').replace(/\/$/, '')).filter(Boolean),
+      blocked_domains: blockedDomains.split(',').map((d) => d.trim().replace(/^https?:\/\//, '').replace(/\/$/, '')).filter(Boolean),
       source_config: {
         web: sourceWeb,
         youtube: sourceYoutube,
@@ -121,17 +125,46 @@ export default function NewCompanyPage() {
               <p className="text-xs text-gray-500 mt-1">Additional terms to search for alongside the company name</p>
             </div>
             <div>
-              <label className="label">Extra exclude keywords (comma-separated)</label>
+              <label className="label">Exclude keywords (comma-separated)</label>
               <input
                 className="input"
                 type="text"
                 value={extraExcludeKeywords}
                 onChange={(e) => setExtraExcludeKeywords(e.target.value)}
-                placeholder="e.g. deprecated, legacy"
+                placeholder="e.g. deprecated, legacy, webinar"
               />
               <p className="text-xs text-gray-500 mt-1">
                 Added to defaults: {DEFAULT_EXCLUDE_KEYWORDS.slice(0, 4).join(', ')}...
               </p>
+            </div>
+          </div>
+        </section>
+
+        {/* Domain filters */}
+        <section>
+          <h2 className="text-sm font-semibold text-gray-900 mb-4">Domain filters</h2>
+          <div className="space-y-4">
+            <div>
+              <label className="label">Allowed domains (comma-separated)</label>
+              <input
+                className="input"
+                type="text"
+                value={allowedDomains}
+                onChange={(e) => setAllowedDomains(e.target.value)}
+                placeholder="e.g. techcrunch.com, g2.com, reddit.com"
+              />
+              <p className="text-xs text-gray-500 mt-1">If set, only pull content from these domains. Leave blank to allow all.</p>
+            </div>
+            <div>
+              <label className="label">Blocked domains (comma-separated)</label>
+              <input
+                className="input"
+                type="text"
+                value={blockedDomains}
+                onChange={(e) => setBlockedDomains(e.target.value)}
+                placeholder="e.g. facebook.com, linkedin.com"
+              />
+              <p className="text-xs text-gray-500 mt-1">Always skip content from these domains.</p>
             </div>
           </div>
         </section>

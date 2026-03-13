@@ -22,6 +22,8 @@ export interface Company {
   domain: string | null
   include_keywords: string[] | null
   exclude_keywords: string[] | null
+  allowed_domains: string[] | null
+  blocked_domains: string[] | null
   source_config: SourceConfig
   created_at: string
 }
@@ -103,11 +105,66 @@ export interface Insight {
 // API request / response shapes
 // ============================================================
 
+export interface ComparisonJson {
+  messaging_gap_analysis: {
+    company_a_unique: string[]
+    company_b_unique: string[]
+    shared_themes: string[]
+    gap_summary: string
+  }
+  icp_comparison: {
+    company_a: string
+    company_b: string
+    overlap: string
+    divergence: string
+  }
+  channel_presence: {
+    company_a_breakdown: Record<string, number>
+    company_b_breakdown: Record<string, number>
+    observations: string[]
+  }
+  positioning_delta: {
+    company_a_positioning: string
+    company_b_positioning: string
+    key_differences: string[]
+  }
+  proof_points: {
+    company_a: string[]
+    company_b: string[]
+    gaps: string[]
+  }
+  pricing_signals: {
+    company_a: string
+    company_b: string
+    delta: string
+  }
+  strategic_opportunities: string[]
+  top_evidence_links: Array<{
+    company: 'a' | 'b'
+    url: string
+    title: string
+    reason: string
+  }>
+}
+
+export interface Comparison {
+  id: string
+  company_a_id: string
+  company_b_id: string
+  scan_a_id: string
+  scan_b_id: string
+  summary_md: string
+  comparison_json: ComparisonJson
+  created_at: string
+}
+
 export interface CreateCompanyInput {
   name: string
   domain?: string
   include_keywords?: string[]
   exclude_keywords?: string[]
+  allowed_domains?: string[]
+  blocked_domains?: string[]
   source_config?: Partial<SourceConfig>
 }
 

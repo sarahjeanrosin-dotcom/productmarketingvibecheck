@@ -148,22 +148,13 @@ export default function CompanyPage() {
         </div>
         <div className="flex items-center gap-2">
           {scan?.status === 'completed' && (
-            <>
-              <a
-                href={`/api/export/csv/${scan.id}`}
-                className="btn-secondary text-xs"
-                download
-              >
-                Export CSV
-              </a>
-              <a
-                href={`/api/export/pdf/${scan.id}`}
-                className="btn-secondary text-xs"
-                download
-              >
-                Export PDF
-              </a>
-            </>
+            <a
+              href={`/api/export/pdf/${scan.id}`}
+              className="btn-secondary text-xs"
+              download
+            >
+              Export PDF
+            </a>
           )}
           <button
             onClick={handleRunScan}

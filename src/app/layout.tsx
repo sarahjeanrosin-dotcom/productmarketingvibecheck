@@ -25,6 +25,10 @@ export default function RootLayout({
               <a href="/companies" className="text-base font-semibold text-gray-900 hover:text-brand-600">
                 Content Intelligence
               </a>
+              <nav className="ml-6 flex items-center gap-4">
+                <a href="/companies" className="text-sm text-gray-600 hover:text-gray-900">Companies</a>
+                <a href="/compare" className="text-sm text-gray-600 hover:text-gray-900">Compare</a>
+              </nav>
             </div>
           </header>
           <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
