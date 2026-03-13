@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import type { Company, Comparison } from '@/lib/types'
+import { authedFetch } from '@/lib/authed-fetch'
 
 interface CompanyOption extends Company {
   has_completed_scan: boolean
@@ -28,8 +29,8 @@ export default function ComparePage() {
     async function load() {
       try {
         const [companiesRes, comparisonsRes] = await Promise.all([
-          fetch('/api/companies'),
-          fetch('/api/comparisons'),
+          authedFetch('/api/companies'),
+          authedFetch('/api/comparisons'),
         ])
         const companiesData: Company[] = await companiesRes.json()
         const comparisonsData: ComparisonListItem[] = await comparisonsRes.json()
@@ -37,7 +38,7 @@ export default function ComparePage() {
         // For each company, check if it has a completed scan
         const scanChecks = await Promise.all(
           companiesData.map(async (co) => {
-            const res = await fetch(`/api/scans?company_id=${co.id}`)
+            const res = await authedFetch(`/api/scans?company_id=${co.id}`)
             if (!res.ok) return { ...co, has_completed_scan: false }
             const data = await res.json()
             return { ...co, has_completed_scan: data.scan?.status === 'completed' }
@@ -62,7 +63,7 @@ export default function ComparePage() {
     setGenerating(true)
     setError(null)
     try {
-      const res = await fetch('/api/comparisons', {
+      const res = await authedFetch('/api/comparisons', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ company_a_id: companyAId, company_b_id: companyBId }),
