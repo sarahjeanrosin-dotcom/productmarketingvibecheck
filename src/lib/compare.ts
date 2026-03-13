@@ -129,8 +129,8 @@ Respond ONLY with the JSON object (no markdown fences).`
 
   try {
     const msg = await getClient().messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 2048,
       messages: [{ role: 'user', content: prompt }],
     })
 
