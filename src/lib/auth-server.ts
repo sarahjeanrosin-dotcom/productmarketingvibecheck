@@ -46,6 +46,10 @@ export function isSubscriptionBypassUser(email?: string | null): boolean {
 }
 
 export async function requireAuth(req: NextRequest): Promise<AuthResult> {
+  if (process.env.NEXT_PUBLIC_SKIP_AUTH === 'true') {
+    return { user: null, accessToken: null, errorResponse: null }
+  }
+
   const authHeader = req.headers.get('authorization')
   if (!authHeader?.toLowerCase().startsWith('bearer ')) {
     return {
@@ -79,6 +83,10 @@ export async function requireAuth(req: NextRequest): Promise<AuthResult> {
 }
 
 export async function requireActiveSubscription(req: NextRequest): Promise<SubscriptionAuthResult> {
+  if (process.env.NEXT_PUBLIC_SKIP_AUTH === 'true') {
+    return { user: null, accessToken: null, errorResponse: null, subscriptionActive: true }
+  }
+
   const auth = await requireAuth(req)
   if (auth.errorResponse || !auth.user || !auth.accessToken) {
     return { ...auth, subscriptionActive: false }
