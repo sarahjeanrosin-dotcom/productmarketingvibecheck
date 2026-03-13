@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import { authedFetch } from '@/lib/authed-fetch'
 import type { Comparison, ComparisonJson } from '@/lib/types'
 
 interface ComparisonDetail extends Comparison {
@@ -20,7 +21,7 @@ export default function ComparisonDetailPage() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(`/api/comparisons/${id}`)
+        const res = await authedFetch(`/api/comparisons/${id}`)
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? 'Failed to load comparison')
         setComparison(data)
