@@ -138,7 +138,7 @@ Respond ONLY with the JSON object (no markdown fences).`
     const clean = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
     comparison_json = JSON.parse(clean)
   } catch (err) {
-    console.warn('Comparison generation failed, using fallback:', err)
+    console.error('Comparison generation failed, using fallback. Error:', err instanceof Error ? err.message : String(err))
     comparison_json = buildFallbackComparison(companyAName, companyBName, breakdownA, breakdownB)
   }
 
