@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
 import { requireAuth } from '@/lib/auth-server'
-import { generateComparison } from '@/lib/compare'
 
-export const maxDuration = 300
+export const maxDuration = 60
 
 export async function GET(req: NextRequest) {
   const { accessToken, errorResponse } = await requireAuth(req)
@@ -19,7 +18,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Fetch company names for display
   const companyIds = Array.from(new Set([
     ...(data ?? []).map((c) => c.company_a_id),
     ...(data ?? []).map((c) => c.company_b_id),
@@ -64,7 +62,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Cannot compare a company with itself' }, { status: 400 })
   }
 
-  // Load both companies
   const [companyARes, companyBRes] = await Promise.all([
     db.from('companies').select('*').eq('id', body.company_a_id).single(),
     db.from('companies').select('*').eq('id', body.company_b_id).single(),
@@ -77,7 +74,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Company B not found' }, { status: 404 })
   }
 
-  // Get latest completed scan for each company
   const [scanARes, scanBRes] = await Promise.all([
     db.from('scans').select('*').eq('company_id', body.company_a_id).eq('status', 'completed')
       .order('created_at', { ascending: false }).limit(1).single(),
@@ -95,31 +91,20 @@ export async function POST(req: NextRequest) {
   const scanA = scanARes.data
   const scanB = scanBRes.data
 
-  // Load insights and content items in parallel
-  const [insightAFull, insightBFull, itemsARes, itemsBRes] = await Promise.all([
-    db.from('insights').select('*').eq('scan_id', scanA.id).single(),
-    db.from('insights').select('*').eq('scan_id', scanB.id).single(),
-    db.from('content_items').select('*').eq('scan_id', scanA.id),
-    db.from('content_items').select('*').eq('scan_id', scanB.id),
+  // Verify insights exist before creating the record
+  const [insightARes, insightBRes] = await Promise.all([
+    db.from('insights').select('id').eq('scan_id', scanA.id).single(),
+    db.from('insights').select('id').eq('scan_id', scanB.id).single(),
   ])
 
-  if (insightAFull.error || !insightAFull.data) {
+  if (insightARes.error || !insightARes.data) {
     return NextResponse.json({ error: `No insights found for ${companyARes.data.name}` }, { status: 400 })
   }
-  if (insightBFull.error || !insightBFull.data) {
+  if (insightBRes.error || !insightBRes.data) {
     return NextResponse.json({ error: `No insights found for ${companyBRes.data.name}` }, { status: 400 })
   }
 
-  // Generate comparison synchronously
-  const { summary_md, comparison_json } = await generateComparison(
-    companyARes.data.name,
-    companyBRes.data.name,
-    insightAFull.data.insights_json,
-    insightBFull.data.insights_json,
-    itemsARes.data ?? [],
-    itemsBRes.data ?? []
-  )
-
+  // Create record with status 'processing' — background worker fills in the analysis
   const { data: comparison, error: saveError } = await db
     .from('comparisons')
     .insert({
@@ -127,16 +112,26 @@ export async function POST(req: NextRequest) {
       company_b_id: body.company_b_id,
       scan_a_id: scanA.id,
       scan_b_id: scanB.id,
-      summary_md,
-      comparison_json,
-      status: 'completed',
+      summary_md: '',
+      comparison_json: {},
+      status: 'processing',
     })
     .select()
     .single()
 
   if (saveError || !comparison) {
-    return NextResponse.json({ error: saveError?.message ?? 'Failed to save comparison' }, { status: 500 })
+    return NextResponse.json({ error: saveError?.message ?? 'Failed to create comparison' }, { status: 500 })
   }
+
+  // Trigger background worker (fire-and-forget)
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.URL || process.env.SITE_URL || 'http://localhost:8888'
+  void fetch(`${baseUrl}/.netlify/functions/comparison-worker-background`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ comparisonId: comparison.id }),
+  }).catch((err) => {
+    console.warn('Failed to trigger comparison worker:', err)
+  })
 
   return NextResponse.json({
     ...comparison,

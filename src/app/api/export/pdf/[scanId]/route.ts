@@ -90,7 +90,15 @@ export async function GET(
       lineHeight = size * 1.45,
     } = opts
 
-    const words = text.replace(/[^\x00-\xFF]/g, '?').replace(/\r?\n/g, ' ').split(' ').filter(Boolean)
+    const words = text
+      .replace(/[•·◦▪▸►]/g, '-')
+      .replace(/[–—]/g, '-')
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/\u2026/g, '...')
+      .replace(/[^\x00-\xFF]/g, '')
+      .replace(/\r?\n/g, ' ')
+      .split(' ').filter(Boolean)
     const lines: string[] = []
     let current = ''
 

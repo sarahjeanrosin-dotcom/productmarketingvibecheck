@@ -38,3 +38,21 @@ export async function GET(
     company_b_name: nameMap[comparison.company_b_id] ?? 'Unknown',
   })
 }
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { accessToken, errorResponse } = await requireAuth(req)
+  if (errorResponse) return errorResponse
+  const { id } = await params
+  const db = createServerClient(accessToken ?? undefined)
+
+  const { error } = await db.from('comparisons').delete().eq('id', id)
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  return new NextResponse(null, { status: 204 })
+}

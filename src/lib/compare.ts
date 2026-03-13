@@ -130,13 +130,16 @@ Respond ONLY with the JSON object (no markdown fences).`
   try {
     const msg = await getClient().messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 4096,
+      max_tokens: 8192,
       messages: [{ role: 'user', content: prompt }],
     })
 
     const text = msg.content[0].type === 'text' ? msg.content[0].text : '{}'
-    const clean = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
-    comparison_json = JSON.parse(clean)
+    // Extract JSON robustly: find the outermost { ... } block
+    const start = text.indexOf('{')
+    const end = text.lastIndexOf('}')
+    if (start === -1 || end === -1 || end < start) throw new Error('No JSON object found in response')
+    comparison_json = JSON.parse(text.slice(start, end + 1))
   } catch (err) {
     console.error('Comparison generation failed, using fallback. Error:', err instanceof Error ? err.message : String(err))
     comparison_json = buildFallbackComparison(companyAName, companyBName, breakdownA, breakdownB)
