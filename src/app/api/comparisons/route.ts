@@ -18,7 +18,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Fetch company names for display
   const companyIds = Array.from(new Set([
     ...(data ?? []).map((c) => c.company_a_id),
     ...(data ?? []).map((c) => c.company_b_id),
@@ -63,7 +62,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Cannot compare a company with itself' }, { status: 400 })
   }
 
-  // Load both companies
   const [companyARes, companyBRes] = await Promise.all([
     db.from('companies').select('*').eq('id', body.company_a_id).single(),
     db.from('companies').select('*').eq('id', body.company_b_id).single(),
@@ -76,7 +74,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Company B not found' }, { status: 404 })
   }
 
-  // Get latest completed scan for each company
   const [scanARes, scanBRes] = await Promise.all([
     db.from('scans').select('*').eq('company_id', body.company_a_id).eq('status', 'completed')
       .order('created_at', { ascending: false }).limit(1).single(),
@@ -94,7 +91,7 @@ export async function POST(req: NextRequest) {
   const scanA = scanARes.data
   const scanB = scanBRes.data
 
-  // Verify insights exist
+  // Verify insights exist before creating the record
   const [insightARes, insightBRes] = await Promise.all([
     db.from('insights').select('id').eq('scan_id', scanA.id).single(),
     db.from('insights').select('id').eq('scan_id', scanB.id).single(),
@@ -107,7 +104,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `No insights found for ${companyBRes.data.name}` }, { status: 400 })
   }
 
-  // Create comparison record with status 'processing' — background worker fills in the analysis
+  // Create record with status 'processing' — background worker fills in the analysis
   const { data: comparison, error: saveError } = await db
     .from('comparisons')
     .insert({
@@ -126,7 +123,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: saveError?.message ?? 'Failed to create comparison' }, { status: 500 })
   }
 
-  // Trigger background worker (fire-and-forget — no secret required)
+  // Trigger background worker (fire-and-forget)
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.URL || process.env.SITE_URL || 'http://localhost:8888'
   void fetch(`${baseUrl}/.netlify/functions/comparison-worker-background`, {
     method: 'POST',

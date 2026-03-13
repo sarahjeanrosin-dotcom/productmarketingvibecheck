@@ -28,7 +28,6 @@ exports.handler = async function (event) {
   const supabase = getSupabaseClient()
 
   try {
-    // Load the comparison record (has company/scan IDs)
     const { data: comparison, error: compError } = await supabase
       .from('comparisons')
       .select('*')
@@ -40,7 +39,6 @@ exports.handler = async function (event) {
       return { statusCode: 404, body: 'Comparison not found' }
     }
 
-    // Load companies
     const [{ data: companyA }, { data: companyB }] = await Promise.all([
       supabase.from('companies').select('*').eq('id', comparison.company_a_id).single(),
       supabase.from('companies').select('*').eq('id', comparison.company_b_id).single(),
@@ -48,7 +46,6 @@ exports.handler = async function (event) {
 
     if (!companyA || !companyB) throw new Error('Could not load companies')
 
-    // Load insights and content items
     const [{ data: insightA }, { data: insightB }, { data: itemsA }, { data: itemsB }] = await Promise.all([
       supabase.from('insights').select('*').eq('scan_id', comparison.scan_a_id).single(),
       supabase.from('insights').select('*').eq('scan_id', comparison.scan_b_id).single(),
@@ -58,7 +55,6 @@ exports.handler = async function (event) {
 
     if (!insightA || !insightB) throw new Error('Could not load insights')
 
-    // Generate comparison via Anthropic
     const { summary_md, comparison_json } = await generateComparison(
       companyA.name,
       companyB.name,
@@ -68,7 +64,6 @@ exports.handler = async function (event) {
       itemsB || []
     )
 
-    // Save results
     await supabase
       .from('comparisons')
       .update({ summary_md, comparison_json, status: 'completed' })
