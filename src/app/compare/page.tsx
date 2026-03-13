@@ -28,12 +28,9 @@ export default function ComparePage() {
   useEffect(() => {
     async function load() {
       try {
-        const [companiesRes, comparisonsRes] = await Promise.all([
-          authedFetch('/api/companies'),
-          authedFetch('/api/comparisons'),
-        ])
+        const companiesRes = await authedFetch('/api/companies')
+        if (!companiesRes.ok) throw new Error(`Failed to load companies (${companiesRes.status})`)
         const companiesData: Company[] = await companiesRes.json()
-        const comparisonsData: ComparisonListItem[] = await comparisonsRes.json()
 
         // For each company, check if it has a completed scan
         const scanChecks = await Promise.all(
@@ -44,9 +41,14 @@ export default function ComparePage() {
             return { ...co, has_completed_scan: data.scan?.status === 'completed' }
           })
         )
-
         setCompanies(scanChecks)
-        setComparisons(Array.isArray(comparisonsData) ? comparisonsData : [])
+
+        // Load comparison history separately so a missing table doesn't break the page
+        const comparisonsRes = await authedFetch('/api/comparisons')
+        if (comparisonsRes.ok) {
+          const comparisonsData: ComparisonListItem[] = await comparisonsRes.json()
+          setComparisons(Array.isArray(comparisonsData) ? comparisonsData : [])
+        }
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Failed to load data')
       } finally {
@@ -80,6 +82,16 @@ export default function ComparePage() {
 
   if (loading) {
     return <div className="text-center py-16 text-gray-400">Loading...</div>
+  }
+
+  if (error && companies.length === 0) {
+    return (
+      <div className="max-w-3xl">
+        <div className="rounded-md bg-red-50 border border-red-200 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      </div>
+    )
   }
 
   return (
