@@ -1,15 +1,16 @@
-const { getSupabaseAdminClient } = require('../../src/lib/supabase-admin')
+const { createClient } = require('@supabase/supabase-js')
 const { generateComparison } = require('../../src/lib/compare')
 
-const WORKER_SECRET = process.env.INTERNAL_WORKER_SECRET
+function getSupabaseClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!url || !key) throw new Error('Missing Supabase env vars')
+  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
+}
 
 exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method not allowed' }
-  }
-
-  if (!WORKER_SECRET || event.headers['x-worker-secret'] !== WORKER_SECRET) {
-    return { statusCode: 401, body: 'Unauthorized' }
   }
 
   let body
@@ -24,7 +25,7 @@ exports.handler = async function (event) {
     return { statusCode: 400, body: 'comparisonId required' }
   }
 
-  const supabase = getSupabaseAdminClient()
+  const supabase = getSupabaseClient()
 
   try {
     // Load the comparison record (has company/scan IDs)
@@ -47,19 +48,15 @@ exports.handler = async function (event) {
 
     if (!companyA || !companyB) throw new Error('Could not load companies')
 
-    // Load insights
-    const [{ data: insightA }, { data: insightB }] = await Promise.all([
+    // Load insights and content items
+    const [{ data: insightA }, { data: insightB }, { data: itemsA }, { data: itemsB }] = await Promise.all([
       supabase.from('insights').select('*').eq('scan_id', comparison.scan_a_id).single(),
       supabase.from('insights').select('*').eq('scan_id', comparison.scan_b_id).single(),
-    ])
-
-    if (!insightA || !insightB) throw new Error('Could not load insights')
-
-    // Load content items
-    const [{ data: itemsA }, { data: itemsB }] = await Promise.all([
       supabase.from('content_items').select('*').eq('scan_id', comparison.scan_a_id),
       supabase.from('content_items').select('*').eq('scan_id', comparison.scan_b_id),
     ])
+
+    if (!insightA || !insightB) throw new Error('Could not load insights')
 
     // Generate comparison via Anthropic
     const { summary_md, comparison_json } = await generateComparison(
