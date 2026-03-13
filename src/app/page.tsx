@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation'
+import CompaniesPage from '@/components/CompaniesPage'
 
 export default function Home() {
-  redirect('/companies')
+  return <CompaniesPage />
 }

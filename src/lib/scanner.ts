@@ -104,8 +104,8 @@ interface ScanItem {
   metrics: { views?: number; likes?: number; comments?: number } | null
 }
 
-export async function runScan(scanId: string, company: Company): Promise<void> {
-  const db = createServerClient()
+export async function runScan(scanId: string, company: Company, accessToken?: string): Promise<void> {
+  const db = createServerClient(accessToken)
   const startTime = Date.now()
   // Leave 30s for classification, DB writes, and insights before the 5-min Netlify timeout
   const BUDGET_MS = 270_000
@@ -376,12 +376,26 @@ function addYouTubeVideo(
 // Pre-scan cleanup (replace-on-rerun)
 // ============================================================
 
-export async function deleteCompanyData(companyId: string): Promise<void> {
-  const db = createServerClient()
+export async function deleteCompanyData(
+  companyId: string,
+  accessToken?: string,
+  keepScanId?: string
+): Promise<void> {
+  const db = createServerClient(accessToken)
 
   // Cascade deletes via FK: deleting scans cascades to content_items and insights
   // But to be explicit:
-  await db.from('insights').delete().eq('company_id', companyId)
-  await db.from('content_items').delete().eq('company_id', companyId)
-  await db.from('scans').delete().eq('company_id', companyId)
+  let insightsDelete = db.from('insights').delete().eq('company_id', companyId)
+  let itemsDelete = db.from('content_items').delete().eq('company_id', companyId)
+  let scansDelete = db.from('scans').delete().eq('company_id', companyId)
+
+  if (keepScanId) {
+    insightsDelete = insightsDelete.neq('scan_id', keepScanId)
+    itemsDelete = itemsDelete.neq('scan_id', keepScanId)
+    scansDelete = scansDelete.neq('id', keepScanId)
+  }
+
+  await insightsDelete
+  await itemsDelete
+  await scansDelete
 }

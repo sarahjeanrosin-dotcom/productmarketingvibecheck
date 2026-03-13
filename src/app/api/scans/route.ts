@@ -1,12 +1,22 @@
-import { NextRequest, NextResponse, after } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
-import { runScan, deleteCompanyData } from '@/lib/scanner'
-import type { Company } from '@/lib/types'
+import { requireActiveSubscription } from '@/lib/auth-server'
 
-// Allow up to 5 minutes for background scan execution
-export const maxDuration = 300
+// Keep request duration short; scan runs asynchronously after enqueue.
+export const maxDuration = 60
+
+function normalizeScanErrorMessage(err: unknown): string {
+  const raw = err instanceof Error ? err.message : 'Scan failed'
+  if (/Unexpected token/.test(raw) || /is not valid JSON/i.test(raw)) {
+    return 'Upstream service returned an invalid response. Please retry; if it persists, check API key/limits.'
+  }
+  return raw
+}
 
 export async function GET(req: NextRequest) {
+  const { accessToken, errorResponse } = await requireActiveSubscription(req)
+  if (errorResponse) return errorResponse
+
   const { searchParams } = new URL(req.url)
   const companyId = searchParams.get('company_id')
 
@@ -14,7 +24,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'company_id required' }, { status: 400 })
   }
 
-  const db = createServerClient()
+  const db = createServerClient(accessToken ?? undefined)
 
   // Get the latest scan
   const { data: scan, error: scanError } = await db
@@ -55,7 +65,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const db = createServerClient()
+  const { accessToken, errorResponse } = await requireActiveSubscription(req)
+  if (errorResponse) return errorResponse
+
+  const db = createServerClient(accessToken ?? undefined)
 
   let body: { company_id: string }
   try {
@@ -79,9 +92,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Company not found' }, { status: 404 })
   }
 
-  // Replace-on-rerun: delete prior data
-  await deleteCompanyData(body.company_id)
-
   // Create new scan record
   const { data: scan, error: scanError } = await db
     .from('scans')
@@ -96,21 +106,36 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: scanError?.message ?? 'Failed to create scan' }, { status: 500 })
   }
 
-  // Run scan asynchronously after response is sent.
-  // This avoids serverless function timeout killing the scan mid-run.
-  after(async () => {
-    try {
-      await runScan(scan.id, company as Company)
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Scan failed'
-      const bgDb = createServerClient()
-      await bgDb
-        .from('scans')
-        .update({ status: 'failed', error: msg, completed_at: new Date().toISOString() })
-        .eq('id', scan.id)
-    }
-  })
+  // Enqueue job
+  const { data: job, error: jobError } = await db
+    .from('scan_jobs')
+    .insert({
+      scan_id: scan.id,
+      company_id: body.company_id,
+      status: 'queued',
+    })
+    .select()
+    .single()
 
-  // Return immediately — client polls GET /api/scans?company_id= for status
-  return NextResponse.json({ scan }, { status: 201 })
+  if (jobError || !job) {
+    return NextResponse.json({ error: jobError?.message ?? 'Failed to enqueue scan job' }, { status: 500 })
+  }
+
+  // Trigger background worker (fire-and-forget). Errors here do not block the request.
+  const triggerSecret = process.env.INTERNAL_WORKER_SECRET
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || 'http://localhost:3000'
+  if (triggerSecret) {
+    void fetch(`${baseUrl}/.netlify/functions/scan-worker-background`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-worker-secret': triggerSecret,
+      },
+      body: JSON.stringify({ jobId: job.id }),
+    }).catch((err) => {
+      console.warn('Failed to trigger scan worker', err)
+    })
+  }
+
+  return NextResponse.json({ scan, queued: true, job_id: job.id }, { status: 201 })
 }
