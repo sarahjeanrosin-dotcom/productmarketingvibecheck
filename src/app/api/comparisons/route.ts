@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
+import { requireAuth } from '@/lib/auth-server'
 import { generateComparison } from '@/lib/compare'
 import type { InsightsJson, ContentItem } from '@/lib/types'
 
-export async function GET() {
-  const db = createServerClient()
+export async function GET(req: NextRequest) {
+  const { accessToken, errorResponse } = await requireAuth(req)
+  if (errorResponse) return errorResponse
+  const db = createServerClient(accessToken ?? undefined)
 
   const { data, error } = await db
     .from('comparisons')
@@ -41,7 +44,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const db = createServerClient()
+  const { accessToken, errorResponse } = await requireAuth(req)
+  if (errorResponse) return errorResponse
+  const db = createServerClient(accessToken ?? undefined)
 
   let body: { company_a_id: string; company_b_id: string }
   try {
