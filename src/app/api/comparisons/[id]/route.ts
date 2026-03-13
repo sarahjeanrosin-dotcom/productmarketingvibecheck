@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
+import { requireAuth } from '@/lib/auth-server'
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { accessToken, errorResponse } = await requireAuth(req)
+  if (errorResponse) return errorResponse
   const { id } = await params
-  const db = createServerClient()
+  const db = createServerClient(accessToken ?? undefined)
 
   const { data: comparison, error } = await db
     .from('comparisons')
